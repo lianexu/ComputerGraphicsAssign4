@@ -24,9 +24,12 @@ void Illuminator::GetIllumination(const LightComponent& light_component,
     intensity = directional_light_ptr->GetDiffuseColor();
     dist_to_light = std::numeric_limits<float>::max();
   } else {  // TODO: Implement point light.
-    throw std::runtime_error(
-        "Unrecognized light type when computing "
-        "illumination");
+    auto point_light_ptr = static_cast<PointLight*>(light_ptr);
+    glm::vec3 attenuation = point_light_ptr->GetAttenuation();
+    glm::vec3 light_position = light_component.GetNodePtr()->GetTransform().GetPosition();
+    dir_to_light = glm::normalize(light_position - hit_pos);
+    dist_to_light = glm::distance(light_position, hit_pos);
+    intensity = point_light_ptr->GetDiffuseColor()/(attenuation * dist_to_light * dist_to_light);
   }
 }
 }  // namespace GLOO

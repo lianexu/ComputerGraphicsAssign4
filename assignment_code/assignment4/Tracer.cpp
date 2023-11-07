@@ -11,6 +11,10 @@
 #include "gloo/Image.hpp"
 #include "Illuminator.hpp"
 
+
+#include "glm/ext.hpp" //for printing
+#include "glm/gtx/string_cast.hpp"
+
 namespace GLOO {
 void Tracer::Render(const Scene& scene, const std::string& output_file) {
   scene_ptr_ = &scene;
@@ -21,8 +25,7 @@ void Tracer::Render(const Scene& scene, const std::string& output_file) {
 
 
   Image image(image_size_.x, image_size_.y);
-
-
+    
   for (size_t y = 0; y < image_size_.y; y++) {
     for (size_t x = 0; x < image_size_.x; x++) {
       // TODO: For each pixel, cast a ray, and update its value in the image.
@@ -35,7 +38,7 @@ void Tracer::Render(const Scene& scene, const std::string& output_file) {
       image.SetPixel(x,y,color);
       // std::cout << "x" << x_norm << std::endl;
       // std::cout << "y" << y_norm << std::endl;
-      
+      // root->GetComponentPtr<MaterialComponent>()->GetMaterial().GetAmbientColor();
     }
   }
 
@@ -48,7 +51,7 @@ glm::vec3 Tracer::TraceRay(const Ray& ray,
                            size_t bounces,
                            HitRecord& record) const {
   // TODO: Compute the color for the cast ray.
-    glm::vec3 pixel_color(1.0f);
+    glm::vec3 pixel_color(0.0f);
     float t_min = camera_.GetTMin();
     for (const auto& component : tracing_components_) {
       glm::mat4 component_to_world = component->GetNodePtr()->GetTransform().GetLocalToWorldMatrix();
@@ -59,17 +62,54 @@ glm::vec3 Tracer::TraceRay(const Ray& ray,
       const auto& hittable = component->GetHittable();
       if(hittable.Intersect(ray_temp, t_min, record)){
         record.normal = glm::normalize(record.normal * glm::transpose(glm::mat3(component_to_world)));
-        pixel_color = component->GetNodePtr()->GetComponentPtr<MaterialComponent>()->GetMaterial().GetAmbientColor();
+        glm::vec3 hit_pos = ray.At(record.time);
+
+        glm::vec3 k_diffuse = component->GetNodePtr()->GetComponentPtr<MaterialComponent>()->GetMaterial().GetDiffuseColor();
+        glm::vec3 k_specular = component->GetNodePtr()->GetComponentPtr<MaterialComponent>()->GetMaterial().GetSpecularColor();
+
+        float shininess = component->GetNodePtr()->GetComponentPtr<MaterialComponent>()->GetMaterial().GetShininess();
+        
+        // glm::vec3 I(0.0f);
+        for (auto& light : light_components_){
+          if (light->GetLightPtr()->GetType() == LightType::Point || light->GetLightPtr()->GetType() == LightType::Directional){
+            glm::vec3 dir_to_light(0.0f, 0.0f, 0.0f);
+            glm::vec3 intensity(0.0f, 0.0f, 0.0f);
+            float dist_to_light = 0.0f;
+            Illuminator::GetIllumination(*light, hit_pos, dir_to_light, intensity, dist_to_light);
+            glm::vec3 I_Diffuse = GetIDiffuse(k_diffuse, dir_to_light, intensity, record.normal);
+            glm::vec3 I_Specular = GetISpecular(shininess, k_specular, dir_to_light, intensity, record.normal);
+            pixel_color += I_Diffuse + I_Specular;
+          }
+        }
+        // component->GetNodePtr()->GetComponentPtr<MaterialComponent>()->GetMaterial().GetAmbientColor();
+        glm::vec3 L_ambient = component->GetNodePtr()->GetComponentPtr<MaterialComponent>()->GetMaterial().GetAmbientColor();
+        pixel_color += L_ambient * k_diffuse;
       }
-
-
     }
-
     if (record.time < std::numeric_limits<float>::max()){
       return pixel_color;
     }else{
       return GetBackgroundColor(ray.GetDirection());
     }
+ }
+
+ glm::vec3 Tracer::GetIDiffuse(glm::vec3 k_diffuse, glm::vec3 dir_to_light, glm::vec3 intensity, glm::vec3 normal) const{
+  float clamped = glm::dot(dir_to_light, normal);
+  if (clamped <= 0){
+    clamped = 0;
+  }
+  glm::vec3 I_Diffuse = clamped * intensity * k_diffuse;
+  return I_Diffuse;
+ }
+
+ glm::vec3 Tracer::GetISpecular(float shininess, glm::vec3 k_specular, glm::vec3 dir_to_light, glm::vec3 intensity, glm::vec3 normal) const{
+  auto R = -dir_to_light + 2 * glm::dot(dir_to_light, normal) * normal;
+  float clamped = glm::dot(dir_to_light, R);
+  if (clamped <= 0){
+    clamped = 0;
+  }
+  glm::vec3 I_Specular = pow(clamped, shininess) * intensity * k_specular;
+  return I_Specular;
  }
 
 
@@ -79,4 +119,5 @@ glm::vec3 Tracer::GetBackgroundColor(const glm::vec3& direction) const {
   } else
     return background_color_;
 }
+
 }  // namespace GLOO

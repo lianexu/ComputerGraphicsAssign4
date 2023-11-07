@@ -35,7 +35,8 @@ class Tracer {
   glm::vec3 TraceRay(const Ray& ray, size_t bounces, HitRecord& record) const;
 
   glm::vec3 GetBackgroundColor(const glm::vec3& direction) const;
-
+  glm::vec3 GetIDiffuse(glm::vec3 k_diffuse, glm::vec3 dir_to_light, glm::vec3 intensity, glm::vec3 normal) const;
+  glm::vec3 GetISpecular(float shininess, glm::vec3 k_specular, glm::vec3 dir_to_light, glm::vec3 intensity, glm::vec3 normal) const;
   PerspectiveCamera camera_;
   glm::ivec2 image_size_;
   size_t max_bounces_;

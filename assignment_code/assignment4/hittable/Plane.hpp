@@ -9,6 +9,9 @@ class Plane : public HittableBase {
   Plane(const glm::vec3& normal, float d);
   bool Intersect(const Ray& ray, float t_min, HitRecord& record) const override;
 
+  private:
+    float d_;
+    const glm::vec3 normal_;
 };
 }  // namespace GLOO
 
