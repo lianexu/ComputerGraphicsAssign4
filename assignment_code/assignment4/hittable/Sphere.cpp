@@ -6,7 +6,7 @@
 
 namespace GLOO {
 bool Sphere::Intersect(const Ray& ray, float t_min, HitRecord& record) const {
-  float a = glm::lengtgh2(ray.GetDirection()); // squared distance of x
+  float a = glm::length2(ray.GetDirection()); // squared distance of x
   float b = 2 * glm::dot(ray.GetDirection(), ray.GetOrigin());
   float c = glm::length2(ray.GetOrigin()) - radius_ * radius_;
 
