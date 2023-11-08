@@ -53,6 +53,9 @@ glm::vec3 Tracer::TraceRay(const Ray& ray,
                            HitRecord& record) const {
   // TODO: Compute the color for the cast ray.
     glm::vec3 pixel_color(0.0f);
+    glm::vec3 I_Direct(0.0f);
+    glm::vec3 I_Indirect(0.0f);
+
     float t_min = camera_.GetTMin();
     for (const auto& component : tracing_components_) {
       glm::mat4 component_to_world = component->GetNodePtr()->GetTransform().GetLocalToWorldMatrix();
@@ -63,7 +66,7 @@ glm::vec3 Tracer::TraceRay(const Ray& ray,
       const auto& hittable = component->GetHittable();
       
       if(hittable.Intersect(ray_temp, t_min, record)){
-        pixel_color = glm::vec3(0.0f);
+        I_Direct = glm::vec3(0.0f);
         record.normal = glm::normalize(record.normal * glm::transpose(glm::mat3(component_to_world)));
         glm::vec3 hit_pos = ray.At(record.time);
 
@@ -86,19 +89,40 @@ glm::vec3 Tracer::TraceRay(const Ray& ray,
             glm::vec3 surface_to_eye = -ray.GetDirection();
             glm::vec3 I_Specular = GetISpecular(shininess, k_specular, surface_to_eye, dir_to_light, intensity, record.normal);
 
-            pixel_color += I_Diffuse + I_Specular;
+            I_Direct += I_Diffuse + I_Specular;
+
+
+          // if (bounces == 0) {
+
+          // } else { // bouces >= 1
+          //   bounces -= 1;
+          //   HitRecord recursive_record;
+          //   Ray recursive_ray;
+          //   glm::vec3 R = glm::normalize(-dir_to_light + 2 * glm::dot(dir_to_light, normal) * normal);
+          //   recursive_ray.SetDirection(R);
+          //   TraceRay(ray, bounces, recursive_record);
+          // }
+
+
           }else{ // Ambient Lighting
             // Ambient Shading
             glm::vec3 L_Ambient = light->GetLightPtr()->GetDiffuseColor();
             glm::vec3 I_Ambient = L_Ambient * k_ambient;
-            pixel_color += I_Ambient;
+            I_Direct += I_Ambient;
           }
           }
+          
+
+
+      
+
+
       }
     }
       
 
     if (record.time < std::numeric_limits<float>::max()){
+      pixel_color += I_Direct;
       return pixel_color;
     }else{
       return GetBackgroundColor(ray.GetDirection());
@@ -112,7 +136,7 @@ glm::vec3 Tracer::TraceRay(const Ray& ray,
  }
 
  glm::vec3 Tracer::GetISpecular(float shininess, glm::vec3 k_specular, glm::vec3 surface_to_eye, glm::vec3 dir_to_light, glm::vec3 intensity, glm::vec3 normal) const{
-  auto R = -dir_to_light + 2 * glm::dot(dir_to_light, normal) * normal;
+  glm::vec3 R = glm::normalize(-dir_to_light + 2 * glm::dot(dir_to_light, normal) * normal);
   float clamped = std::max(0.0f, glm::dot(surface_to_eye, R));
   glm::vec3 I_Specular = pow(clamped, shininess) * intensity * k_specular;
   return I_Specular;
