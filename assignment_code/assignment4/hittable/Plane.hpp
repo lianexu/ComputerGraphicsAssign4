@@ -10,8 +10,8 @@ class Plane : public HittableBase {
   bool Intersect(const Ray& ray, float t_min, HitRecord& record) const override;
 
   private:
-    float d_;
-    const glm::vec3 normal_;
+    // float d_;
+    // const glm::vec3 normal_;
 };
 }  // namespace GLOO
 

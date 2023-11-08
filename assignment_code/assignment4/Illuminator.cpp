@@ -16,7 +16,6 @@ void Illuminator::GetIllumination(const LightComponent& light_component,
                                   glm::vec3& intensity,
                                   float& dist_to_light) {
   // Calculation will be done in world space.
-
   auto light_ptr = light_component.GetLightPtr();
   if (light_ptr->GetType() == LightType::Directional) {
     auto directional_light_ptr = static_cast<DirectionalLight*>(light_ptr);

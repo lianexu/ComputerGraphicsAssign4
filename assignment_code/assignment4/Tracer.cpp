@@ -25,6 +25,7 @@ void Tracer::Render(const Scene& scene, const std::string& output_file) {
 
 
   Image image(image_size_.x, image_size_.y);
+  // glm::vec3 scene_ambient = root.GetComponentPtr<MaterialComponent>()->GetMaterial().GetAmbientColor();
     
   for (size_t y = 0; y < image_size_.y; y++) {
     for (size_t x = 0; x < image_size_.x; x++) {
@@ -60,32 +61,43 @@ glm::vec3 Tracer::TraceRay(const Ray& ray,
       ray_temp.ApplyTransform(world_to_component);
 
       const auto& hittable = component->GetHittable();
+      
       if(hittable.Intersect(ray_temp, t_min, record)){
+        pixel_color = glm::vec3(0.0f);
         record.normal = glm::normalize(record.normal * glm::transpose(glm::mat3(component_to_world)));
         glm::vec3 hit_pos = ray.At(record.time);
 
         glm::vec3 k_diffuse = component->GetNodePtr()->GetComponentPtr<MaterialComponent>()->GetMaterial().GetDiffuseColor();
         glm::vec3 k_specular = component->GetNodePtr()->GetComponentPtr<MaterialComponent>()->GetMaterial().GetSpecularColor();
-
+        glm::vec3 k_ambient = component->GetNodePtr()->GetComponentPtr<MaterialComponent>()->GetMaterial().GetAmbientColor();
         float shininess = component->GetNodePtr()->GetComponentPtr<MaterialComponent>()->GetMaterial().GetShininess();
-        
-        // glm::vec3 I(0.0f);
+
         for (auto& light : light_components_){
           if (light->GetLightPtr()->GetType() == LightType::Point || light->GetLightPtr()->GetType() == LightType::Directional){
             glm::vec3 dir_to_light(0.0f, 0.0f, 0.0f);
             glm::vec3 intensity(0.0f, 0.0f, 0.0f);
             float dist_to_light = 0.0f;
             Illuminator::GetIllumination(*light, hit_pos, dir_to_light, intensity, dist_to_light);
+
+            // Diffuse Shading
             glm::vec3 I_Diffuse = GetIDiffuse(k_diffuse, dir_to_light, intensity, record.normal);
-            glm::vec3 I_Specular = GetISpecular(shininess, k_specular, dir_to_light, intensity, record.normal);
+
+            //Specular Shading
+            glm::vec3 surface_to_eye = -ray.GetDirection();
+            glm::vec3 I_Specular = GetISpecular(shininess, k_specular, surface_to_eye, dir_to_light, intensity, record.normal);
+
             pixel_color += I_Diffuse + I_Specular;
+          }else{ // Ambient Lighting
+            // Ambient Shading
+            glm::vec3 L_Ambient = light->GetLightPtr()->GetDiffuseColor();
+            glm::vec3 I_Ambient = L_Ambient * k_ambient;
+            pixel_color += I_Ambient;
           }
-        }
-        // component->GetNodePtr()->GetComponentPtr<MaterialComponent>()->GetMaterial().GetAmbientColor();
-        glm::vec3 L_ambient = component->GetNodePtr()->GetComponentPtr<MaterialComponent>()->GetMaterial().GetAmbientColor();
-        pixel_color += L_ambient * k_diffuse;
+          }
       }
     }
+      
+
     if (record.time < std::numeric_limits<float>::max()){
       return pixel_color;
     }else{
@@ -94,20 +106,14 @@ glm::vec3 Tracer::TraceRay(const Ray& ray,
  }
 
  glm::vec3 Tracer::GetIDiffuse(glm::vec3 k_diffuse, glm::vec3 dir_to_light, glm::vec3 intensity, glm::vec3 normal) const{
-  float clamped = glm::dot(dir_to_light, normal);
-  if (clamped <= 0){
-    clamped = 0;
-  }
+  float clamped = std::max(0.0f, glm::dot(dir_to_light, normal));
   glm::vec3 I_Diffuse = clamped * intensity * k_diffuse;
   return I_Diffuse;
  }
 
- glm::vec3 Tracer::GetISpecular(float shininess, glm::vec3 k_specular, glm::vec3 dir_to_light, glm::vec3 intensity, glm::vec3 normal) const{
+ glm::vec3 Tracer::GetISpecular(float shininess, glm::vec3 k_specular, glm::vec3 surface_to_eye, glm::vec3 dir_to_light, glm::vec3 intensity, glm::vec3 normal) const{
   auto R = -dir_to_light + 2 * glm::dot(dir_to_light, normal) * normal;
-  float clamped = glm::dot(dir_to_light, R);
-  if (clamped <= 0){
-    clamped = 0;
-  }
+  float clamped = std::max(0.0f, glm::dot(surface_to_eye, R));
   glm::vec3 I_Specular = pow(clamped, shininess) * intensity * k_specular;
   return I_Specular;
  }
