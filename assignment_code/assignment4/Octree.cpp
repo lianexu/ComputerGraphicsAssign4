@@ -265,6 +265,9 @@ bool Octree::Intersect(const Ray& ray, float t_min, HitRecord& record) {
   uint8_t aa = 0;
   glm::vec3 size = bbox_.mx + bbox_.mn;
   for (int dim = 0; dim < 3; dim++) {
+    if (ray_dir[dim] == 0) {
+      ray_dir[dim] = 10e-9;
+    }
     if (ray_dir[dim] < 0) {
       ray_origin[dim] = size[dim] - ray_origin[dim];
       ray_dir[dim] = -ray_dir[dim];
