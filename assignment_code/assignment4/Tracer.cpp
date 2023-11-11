@@ -25,7 +25,6 @@ namespace GLOO
     light_components_ = root.GetComponentPtrsInChildren<LightComponent>();
 
     Image image(image_size_.x, image_size_.y);
-    // glm::vec3 scene_ambient = root.GetComponentPtr<MaterialComponent>()->GetMaterial().GetAmbientColor();
 
     for (size_t y = 0; y < image_size_.y; y++)
     {
@@ -54,7 +53,7 @@ namespace GLOO
                              HitRecord& record,
                              Material &material) const{
     bool res = false;
-for (const auto &component : tracing_components_)
+    for (const auto &component : tracing_components_)
     {
       glm::mat4 component_to_world = component->GetNodePtr()->GetTransform().GetLocalToWorldMatrix();
       glm::mat4 world_to_component = glm::inverse(component_to_world);
@@ -62,16 +61,20 @@ for (const auto &component : tracing_components_)
       ray_temp.ApplyTransform(world_to_component);
 
       const auto &hittable = component->GetHittable();
-    bool hit = hittable.Intersect(ray_temp, 0, record);
-    if (hit){
-        res = true;
-        record.normal = glm::normalize(record.normal * glm::transpose(glm::mat3(component_to_world)));
-        glm::vec3 hit_pos = ray.At(record.time);
-        material = component->GetNodePtr()->GetComponentPtr<MaterialComponent>()->GetMaterial();
-    }
+      bool hit = hittable.Intersect(ray_temp, 0, record);
+      if (hit){
+          res = true;
+          // record.normal = glm::normalize(record.normal * glm::transpose(glm::mat3(world_to_component)));
+          record.normal = glm::normalize(glm::mat3(glm::transpose(world_to_component)) * record.normal);
+          // record.normal = glm::normalize(record.normal * (glm::mat3(world_to_component)));
+          // ray_temp.ApplyTransform(component_to_world);
+          // glm::vec3 hit_pos = ray.At(record.time);
+          // glm::vec3 hit_pos = ray_temp.At(record.time);
+          material = component->GetNodePtr()->GetComponentPtr<MaterialComponent>()->GetMaterial();
+      }
     }
     return res;
-                             }
+    }
 
   glm::vec3 Tracer::TraceRay(const Ray &ray,
                              size_t bounces,
@@ -83,99 +86,67 @@ for (const auto &component : tracing_components_)
     glm::vec3 I_Indirect(0.0f);
 
     float t_min = camera_.GetTMin();
-    // for (const auto &component : tracing_components_)
-    // {
-      // glm::mat4 component_to_world = component->GetNodePtr()->GetTransform().GetLocalToWorldMatrix();
-      // glm::mat4 world_to_component = glm::inverse(component_to_world);
-      // Ray ray_temp = ray;
-      // ray_temp.ApplyTransform(world_to_component);
+    Material material;
+    bool intersect = IntersectInScene(ray, record, material);
 
-      // const auto &hittable = component->GetHittable();
-      Material material;
-      bool intersect = IntersectInScene(ray,
-                             record,
-                             material);
+    if(intersect)
+    {
+      I_Direct = glm::vec3(0.0f);
+      glm::vec3 hit_pos = ray.At(record.time);
 
-      // if (hittable.Intersect(ray_temp, t_min, record))
-      if(intersect)
+      glm::vec3 k_diffuse = material.GetDiffuseColor();
+      glm::vec3 k_specular = material.GetSpecularColor();
+      glm::vec3 k_ambient = material.GetAmbientColor();
+      float shininess = material.GetShininess();
+
+      for (auto &light : light_components_)
       {
-        I_Direct = glm::vec3(0.0f);
-        // record.normal = glm::normalize(record.normal * glm::transpose(glm::mat3(component_to_world)));
-        glm::vec3 hit_pos = ray.At(record.time);
-
-        glm::vec3 k_diffuse = material.GetDiffuseColor();
-        glm::vec3 k_specular = material.GetSpecularColor();
-        glm::vec3 k_ambient = material.GetAmbientColor();
-        float shininess = material.GetShininess();
-
-        for (auto &light : light_components_)
+        if (light->GetLightPtr()->GetType() == LightType::Point || light->GetLightPtr()->GetType() == LightType::Directional)
         {
-          if (light->GetLightPtr()->GetType() == LightType::Point || light->GetLightPtr()->GetType() == LightType::Directional)
-          {
-            glm::vec3 dir_to_light(0.0f, 0.0f, 0.0f);
-            glm::vec3 intensity(0.0f, 0.0f, 0.0f);
-            float dist_to_light = 0.0f;
-            Illuminator::GetIllumination(*light, hit_pos, dir_to_light, intensity, dist_to_light);
+          glm::vec3 dir_to_light(0.0f, 0.0f, 0.0f);
+          glm::vec3 intensity(0.0f, 0.0f, 0.0f);
+          float dist_to_light = 0.0f;
+          Illuminator::GetIllumination(*light, hit_pos, dir_to_light, intensity, dist_to_light);
 
-            glm::vec3 R_shadow_small = dir_to_light;
-            float epsilon = 0.01;
-            R_shadow_small.x *= epsilon;
-            R_shadow_small.y *= epsilon;
-            R_shadow_small.z *= epsilon;
-            Ray shadow_ray(hit_pos + R_shadow_small, dir_to_light);
-            // HitRecord record2;
-            // TraceRay(shadow_ray, 0, record)
-            // bool shadowed = false;
-            HitRecord record2;
-                  Material material2;
-      bool shadowed = IntersectInScene(shadow_ray,
-                             record2,
-                             material2);
+          // Shadow check
+          glm::vec3 R_shadow_small = dir_to_light;
+          float epsilon = 0.01;
+          R_shadow_small.x += epsilon;
+          R_shadow_small.y += epsilon;
+          R_shadow_small.z += epsilon;
+          Ray shadow_ray(hit_pos + R_shadow_small, dir_to_light); // Shadow ray is in direction of light, moved over by epsilon
+          HitRecord record2; // trashed variable for shadows
+          Material material2; // trashed variable for shadows 
+          bool shadowed = IntersectInScene(shadow_ray, record2, material2);
+          if (shadowed == false || record2.time > dist_to_light || shadows_enabled_ == false) {
+            // Diffuse Shading
+            glm::vec3 I_Diffuse = GetIDiffuse(k_diffuse, dir_to_light, intensity, record.normal);
 
-            // for (const auto &component_internal : tracing_components_)
-            // {
-            //   glm::mat4 component_to_world2 = component_internal->GetNodePtr()->GetTransform().GetLocalToWorldMatrix();
-            //   glm::mat4 world_to_component2 = glm::inverse(component_to_world2);
-            //   shadow_ray.ApplyTransform(world_to_component2);
-            //   const auto &hittable2 = component_internal->GetHittable();
-            //   shadowed = hittable2.Intersect(shadow_ray, t_min, record2);
-            // }
-            // if (shadowed){
-            //   std::cout << "shadowed" << std::endl;
-            // }
-            if (shadowed == false || record2.time > dist_to_light)
-            {
-              // Diffuse Shading
-              glm::vec3 I_Diffuse = GetIDiffuse(k_diffuse, dir_to_light, intensity, record.normal);
+            // Specular Shading
+            glm::vec3 surface_to_eye = -ray.GetDirection();
+            glm::vec3 I_Specular = GetISpecular(shininess, k_specular, surface_to_eye, dir_to_light, intensity, record.normal);
 
-              // Specular Shading
-              glm::vec3 surface_to_eye = -ray.GetDirection();
-              glm::vec3 I_Specular = GetISpecular(shininess, k_specular, surface_to_eye, dir_to_light, intensity, record.normal);
-
-              I_Direct += I_Diffuse + I_Specular;
-            }
-
+            I_Direct += I_Diffuse + I_Specular;
           }
-          else
-          { // Ambient Lighting
-            // Ambient Shading
-            glm::vec3 L_Ambient = light->GetLightPtr()->GetDiffuseColor();
-            glm::vec3 I_Ambient = L_Ambient * k_ambient;
-            I_Direct += I_Ambient;
-          }
+
+        } else { // Ambient Lighting, Ambient Shading (These are not affected by showdows)
+          glm::vec3 L_Ambient = light->GetLightPtr()->GetDiffuseColor();
+          glm::vec3 I_Ambient = L_Ambient * k_ambient;
+          I_Direct += I_Ambient;
         }
+      }
 
         if (bounces > 0 && glm::length(k_specular) > 1e-2f)
         {
           HitRecord recursive_record;
-          glm::vec3 surface_to_eye = -ray.GetDirection();
-          // glm::vec3 R = glm::normalize(-surface_to_eye + 2 * glm::dot(surface_to_eye, record.normal) * record.normal);
+          // glm::vec3 surface_to_eye = -ray.GetDirection();
+
           glm::vec3 R = glm::reflect(ray.GetDirection(), record.normal);
           glm::vec3 R_small = R;
           float epsilon = 0.01;
-          R_small.x *= epsilon;
-          R_small.y *= epsilon;
-          R_small.z *= epsilon;
+          R_small.x += epsilon;
+          R_small.y += epsilon;
+          R_small.z += epsilon;
           Ray recursive_ray(hit_pos + R_small, R);
           I_Indirect += TraceRay(recursive_ray, bounces - 1, recursive_record) * k_specular;
         }
