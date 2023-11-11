@@ -52,6 +52,7 @@ namespace GLOO
   bool Tracer::IntersectInScene(const Ray &ray,
                              HitRecord& record,
                              Material &material) const{
+    float t_min = camera_.GetTMin();
     bool res = false;
     for (const auto &component : tracing_components_)
     {
@@ -61,15 +62,11 @@ namespace GLOO
       ray_temp.ApplyTransform(world_to_component);
 
       const auto &hittable = component->GetHittable();
-      bool hit = hittable.Intersect(ray_temp, 0, record);
-      if (hit){
+      bool hit = hittable.Intersect(ray_temp, t_min, record);
+      if (hit && record.time < std::numeric_limits<float>::max()){
           res = true;
           // record.normal = glm::normalize(record.normal * glm::transpose(glm::mat3(world_to_component)));
           record.normal = glm::normalize(glm::mat3(glm::transpose(world_to_component)) * record.normal);
-          // record.normal = glm::normalize(record.normal * (glm::mat3(world_to_component)));
-          // ray_temp.ApplyTransform(component_to_world);
-          // glm::vec3 hit_pos = ray.At(record.time);
-          // glm::vec3 hit_pos = ray_temp.At(record.time);
           material = component->GetNodePtr()->GetComponentPtr<MaterialComponent>()->GetMaterial();
       }
     }
@@ -85,7 +82,7 @@ namespace GLOO
     glm::vec3 I_Direct(0.0f);
     glm::vec3 I_Indirect(0.0f);
 
-    float t_min = camera_.GetTMin();
+    // float t_min = camera_.GetTMin();
     Material material;
     bool intersect = IntersectInScene(ray, record, material);
 
@@ -111,9 +108,9 @@ namespace GLOO
           // Shadow check
           glm::vec3 R_shadow_small = dir_to_light;
           float epsilon = 0.01;
-          R_shadow_small.x += epsilon;
-          R_shadow_small.y += epsilon;
-          R_shadow_small.z += epsilon;
+          R_shadow_small.x *= epsilon;
+          R_shadow_small.y *= epsilon;
+          R_shadow_small.z *= epsilon;
           Ray shadow_ray(hit_pos + R_shadow_small, dir_to_light); // Shadow ray is in direction of light, moved over by epsilon
           HitRecord record2; // trashed variable for shadows
           Material material2; // trashed variable for shadows 
@@ -136,35 +133,36 @@ namespace GLOO
         }
       }
 
-        if (bounces > 0 && glm::length(k_specular) > 1e-2f)
-        {
-          HitRecord recursive_record;
-          // glm::vec3 surface_to_eye = -ray.GetDirection();
+      if (bounces > 0 && glm::length(k_specular) > 1e-2f)
+      {
+        HitRecord recursive_record;
+        // glm::vec3 surface_to_eye = -ray.GetDirection();
 
-          glm::vec3 R = glm::reflect(ray.GetDirection(), record.normal);
-          glm::vec3 R_small = R;
-          float epsilon = 0.01;
-          R_small.x += epsilon;
-          R_small.y += epsilon;
-          R_small.z += epsilon;
-          Ray recursive_ray(hit_pos + R_small, R);
-          I_Indirect += TraceRay(recursive_ray, bounces - 1, recursive_record) * k_specular;
-        }
-        return I_Direct + I_Indirect;
-      }else{
-          return GetBackgroundColor(ray.GetDirection());
+        glm::vec3 R = glm::reflect(ray.GetDirection(), record.normal);
+        glm::vec3 R_small = R;
+        float epsilon = 0.01;
+        R_small.x *= epsilon;
+        R_small.y *= epsilon;
+        R_small.z *= epsilon;
+        Ray recursive_ray(hit_pos + R_small, R);
+        I_Indirect += TraceRay(recursive_ray, bounces - 1, recursive_record) * k_specular;
       }
+      return I_Direct + I_Indirect;
+
+    } else {
+        return GetBackgroundColor(ray.GetDirection());
+    }
     // }
 
-    if (record.time < std::numeric_limits<float>::max())
-    {
-      pixel_color += (I_Direct + I_Indirect);
-      return pixel_color;
-    }
-    else
-    {
-      return GetBackgroundColor(ray.GetDirection());
-    }
+    // if (record.time < std::numeric_limits<float>::max())
+    // {
+    //   pixel_color += (I_Direct + I_Indirect);
+    //   return pixel_color;
+    // }
+    // else
+    // {
+    //   return GetBackgroundColor(ray.GetDirection());
+    // }
   }
 
   glm::vec3 Tracer::GetIDiffuse(glm::vec3 k_diffuse, glm::vec3 dir_to_light, glm::vec3 intensity, glm::vec3 normal) const
